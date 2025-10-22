@@ -1,0 +1,47 @@
+name: Release Build
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-*'
+
+jobs:
+  build-release:
+    name: Build Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VERSION}"
+
+      - name: Build image
+        run: docker build -t testimage:${{ steps.version.outputs.version }} .
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh/
+          ssh-keyscan -H ${{ vars.SERVER_HOST }} > ~/.ssh/known_hosts
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy to server
+        uses: sonofbytes/unregistry-action@v0.1.0
+        with:
+          image: testimage:${{ steps.version.outputs.version }}
+          destination: ${{ vars.SERVER_SSH_USER }}@${{ vars.SERVER_HOST }}
+          # ssh_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # platform: linux/arm64
